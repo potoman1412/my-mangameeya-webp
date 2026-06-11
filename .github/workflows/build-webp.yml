@@ -30,7 +30,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Download libwebp (per-arch) with fallback
+    - name: Download libwebp (per-arch) with fallback and curl
       shell: powershell
       run: |
         $ver = '1.3.1'
@@ -46,11 +46,19 @@ jobs:
             $succeeded = $true
             break
           } catch {
-            Write-Host "Download failed: $u => $_"
+            Write-Host "Invoke-WebRequest failed for: $u -> $_"
           }
         }
         if (-not $succeeded) {
-          Write-Error "Failed to download $zip from known locations"
+          Write-Host "Attempting download using curl.exe as fallback"
+          foreach ($u in $urls) {
+            Write-Host "curl trying: $u"
+            $curlCmd = "curl -L -o $zip '$u'"
+            $rc = cmd /c $curlCmd; if ($LASTEXITCODE -eq 0) { $succeeded = $true; break }
+          }
+        }
+        if (-not $succeeded) {
+          Write-Error "Failed to download $zip from known locations (both Invoke-WebRequest and curl)"
           exit 1
         }
         Expand-Archive -Path $zip -DestinationPath webp_dll\third_party\libwebp -Force
