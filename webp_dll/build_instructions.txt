@@ -1,0 +1,30 @@
+Build instructions (Windows, Visual Studio Developer Command Prompt)
+
+Prerequisites:
+- Visual Studio with C++ build tools (cl.exe, link.exe)
+- libwebp binaries or build from source (headers + webp.lib)
+- No external PNG writer required because sample uses stb_image_write.h (embedded)
+
+Steps:
+1. ดาวน์โหลด libwebp และวางพาธ headers/lib เช่น:
+   C:\libs\libwebp\include  (มี webp/decode.h)
+   C:\libs\libwebp\lib      (มี webp.lib หรือ webp_static.lib)
+
+2. เปิด "Developer Command Prompt for VS"
+3. ไปที่โฟลเดอร์ `webp_dll` ของโปรเจค
+
+4. คอมไพล์ (ตัวอย่าง):
+
+cl /EHsc /LD webp_dll.cpp /I"C:\libs\libwebp\include" /link /LIBPATH:"C:\libs\libwebp\lib" webp.lib /OUT:webp.dll
+
+- หากไลบรารีชื่ออื่น (เช่น webp_static.lib) ให้ใช้ชื่อนั้นแทน
+- หากต้องการ build แบบ Release/32-bit หรือ 64-bit ให้ใช้ Developer Prompt ที่ตรงกับ target และ library ที่ตรงกัน
+
+5. หลังคอมไพล์ จะได้ `webp.dll` ในโฟลเดอร์นี้
+
+ทดสอบ:
+- เรียกใช้ฟังก์ชัน `DecodeWebPToPNG` จากโปรแกรมทดสอบ (สามารถเขียน exe เล็กๆ เรียก DLL) หรือนำ `webp.dll` ไปวางที่เดียวกับ `MMCE_Win32.exe` แล้วเรียกผ่านโปรแกรมที่โหลด plugin (ขึ้นอยู่กับอินเทอร์เฟซของโปรแกรม)
+
+หมายเหตุเพิ่มเติม:
+- หากต้องการให้เป็น "drop-in" แทน `jpg.dll`/`png.dll` คุณต้องระบุว่ารายชื่อ exports และฟอร์แมตข้อมูลที่โปรแกรมคาดหวังเป็นอย่างไร (เช่นฟังก์ชันชื่ออะไร พารามิเตอร์เป็นแบบใด และรูปแบบข้อมูลภาพที่ต้องส่งกลับ)
+- หากต้องการ ผมสามารถช่วยสร้างตัวทดสอบ (test harness) ที่เรียก `DecodeWebPToPNG` เพื่อยืนยันว่าดีคอร์ดทำงานถูกต้อง
