@@ -25,7 +25,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: [ x86, x64 ]
+        arch: [ x64 ]
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -44,7 +44,8 @@ jobs:
         }
         Pop-Location
         if ('${{ matrix.arch }}' -eq 'x64') { $triplet = 'x64-windows' } else { $triplet = 'x86-windows' }
-        & $vcpkgDir\vcpkg.exe install libwebp:$triplet --recurse
+        Write-Host "Installing libwebp as shared (dynamic) for triplet: $triplet"
+        & $vcpkgDir\vcpkg.exe install libwebp --triplet $triplet --recurse
         $vcpkgInstalled = Join-Path $vcpkgDir 'installed'
         $inc = Join-Path $vcpkgInstalled "$triplet\include"
         $libp = Join-Path $vcpkgInstalled "$triplet\lib"
@@ -52,6 +53,35 @@ jobs:
         Write-Host "vcpkg lib: $libp"
         echo "VCPKG_INC=$inc" >> $env:GITHUB_ENV
         echo "VCPKG_LIB=$libp" >> $env:GITHUB_ENV
+
+    - name: Show installed libwebp libs
+      shell: powershell
+      run: |
+        Write-Host "Listing .lib files in $env:VCPKG_LIB"
+        if (Test-Path $env:VCPKG_LIB) {
+          Get-ChildItem -Path $env:VCPKG_LIB -Filter *.lib -Recurse | ForEach-Object { Write-Host $_.FullName }
+        } else {
+          Write-Host "VCPKG_LIB not found: $env:VCPKG_LIB"
+        }
+
+    - name: Ensure import lib name `webp.lib`
+      shell: powershell
+      run: |
+        $libp = $env:VCPKG_LIB
+        Write-Host "Ensuring import lib webp.lib exists in: $libp"
+        if (-not (Test-Path $libp)) { Write-Host "VCPKG_LIB path missing: $libp"; exit 0 }
+        if (Test-Path (Join-Path $libp 'webp.lib')) {
+          Write-Host 'webp.lib already present.'
+        } elseif (Test-Path (Join-Path $libp 'libwebp.lib')) {
+          Write-Host 'Found libwebp.lib — copying to webp.lib (import lib)'
+          Copy-Item (Join-Path $libp 'libwebp.lib') (Join-Path $libp 'webp.lib') -Force
+        } elseif (Test-Path (Join-Path $libp 'webp_static.lib')) {
+          Write-Host 'Found webp_static.lib (static library). This is not a DLL import lib.'
+          Write-Host 'If you need a shared import lib (webp.lib), rebuild libwebp as shared via vcpkg (use x64-windows dynamic triplet or appropriate port options).'
+        } else {
+          Write-Host 'No webp library files found. Available libs:'
+          Get-ChildItem -Path $libp -Filter *.lib -Recurse | ForEach-Object { Write-Host $_.FullName }
+        }
 
     - name: Find Visual Studio
       shell: powershell
@@ -85,7 +115,24 @@ jobs:
         if "%inc%"=="" set "inc=%CD%\webp_dll\third_party\libwebp\include"
         if "%libp%"=="" set "libp=%CD%\webp_dll\third_party\libwebp\%libsub%"
         set "out=webp_%ARCH%.all"
-        call "%vcvars%" && cl /EHsc /LD webp_dll\webp_dll.cpp /I"%inc%" /link /LIBPATH:"%libp%" webp.lib /OUT:%out%
+        call "%vcvars%"
+        if exist "%libp%\\webp.lib" (
+          set "libfile=webp.lib"
+        ) else (
+          if exist "%libp%\\libwebp.lib" (
+            set "libfile=libwebp.lib"
+          ) else (
+            if exist "%libp%\\webp_static.lib" (
+              set "libfile=webp_static.lib"
+            ) else (
+              echo WebP library not found in %libp%
+              dir "%libp%\\*.lib"
+              exit /b 1
+            )
+          )
+        )
+        echo Using webp lib: %libfile%
+        cl /EHsc /LD webp_dll\webp_dll.cpp /I"%inc%" /link /LIBPATH:"%libp%" %libfile% /OUT:%out%
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -106,11 +153,7 @@ jobs:
         name: webp-x64
         path: ./artifacts/x64
 
-    - name: Download built artifacts x86
-      uses: actions/download-artifact@v4
-      with:
-        name: webp-x86
-        path: ./artifacts/x86
+    # x86 artifact download removed: we only build x64
 
     - name: List artifacts
       run: dir /s
@@ -135,6 +178,5 @@ jobs:
       with:
         files: |
           artifacts\x64\webp-x64.all
-          artifacts\x86\webp-x86.all
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
