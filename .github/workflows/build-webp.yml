@@ -62,17 +62,30 @@ jobs:
         echo "VS_PATH=$vs" >> $env:GITHUB_ENV
 
     - name: Build webp.all
-      shell: powershell
+      shell: cmd
+      env:
+        ARCH: ${{ matrix.arch }}
       run: |
-        $vs = '${{ env.VS_PATH }}'
-        if (-not $vs) { $vs = ( & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath ) }
-        if ('${{ matrix.arch }}' -eq 'x64') { $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'; $libsub='lib\x64' } else { $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars32.bat'; $libsub='lib\x86' }
-        if (-not (Test-Path $vcvars)) { Write-Error "vcvars not found: $vcvars"; exit 1 }
-        Write-Host "Using vcvars: $vcvars"
-        $inc = "%CD%\webp_dll\third_party\libwebp\include"
-        $libp = "%CD%\webp_dll\third_party\libwebp\$libsub"
-        $out = "webp_${{ matrix.arch }}.all"
-        & cmd /c `"`"$vcvars`" && cl /EHsc /LD webp_dll\webp_dll.cpp /I\"$inc\" /link /LIBPATH:\"$libp\" webp.lib /OUT:$out`
+        REM determine vcvars and lib sub according to ARCH
+        if "%ARCH%"=="x64" (
+          set "vcvars=%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat"
+          set "libsub=lib\x64"
+        ) else (
+          set "vcvars=%VS_PATH%\VC\Auxiliary\Build\vcvars32.bat"
+          set "libsub=lib\x86"
+        )
+        if not exist "%vcvars%" (
+          echo vcvars not found: %vcvars%
+          exit /b 1
+        )
+        echo Using vcvars: %vcvars%
+        REM prefer vcpkg-installed include/lib if present
+        set "inc=%VCPKG_INC%"
+        set "libp=%VCPKG_LIB%"
+        if "%inc%"=="" set "inc=%CD%\webp_dll\third_party\libwebp\include"
+        if "%libp%"=="" set "libp=%CD%\webp_dll\third_party\libwebp\%libsub%"
+        set "out=webp_%ARCH%.all"
+        call "%vcvars%" && cl /EHsc /LD webp_dll\webp_dll.cpp /I"%inc%" /link /LIBPATH:"%libp%" webp.lib /OUT:%out%
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
